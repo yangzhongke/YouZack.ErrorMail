@@ -1,5 +1,5 @@
 # YouZack.ErrorMail
-Mail Logging provider on .Net Core, which can be configured as 'send the same error only once'
+Mail Logging provider on .Net Core, which can be configured as 'send the same error only once', if SendSameErrorOnlyOnce=true, if there are more than one same messages ocurred, only one mail would be sent in the time of "IntervalSeconds" senconds.
 ```
 Install-Package YouZack.ErrorMail
 ```
@@ -9,6 +9,7 @@ services.AddLogging(builder => {
 	builder.AddErrorMail(opt => {
 		opt.From = "server@xxx.com";
 		opt.To = new []{"yzk@xxx.com" };
+		opt.IntervalSeconds = 30;
 		opt.SendSameErrorOnlyOnce = true;
 		opt.SmtpEnableSsl = true;
 		opt.SmtpUserName = "server@xxxx.com";
@@ -18,3 +19,6 @@ services.AddLogging(builder => {
 	});
 });
 ```
+
+
+
