@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Mail;
@@ -11,7 +12,8 @@ namespace YouZack.ErrorMail
     {
         private readonly string categoryName;
         private readonly IOptionsSnapshot<ErrorMailLoggerOptions> options;
-        private HashSet<string> sendedMessages = new HashSet<string>();
+        private readonly ConcurrentDictionary<string,DateTime> sendedMessagesCache 
+            = new ConcurrentDictionary<string, DateTime>();
 
         public ErrorMailLogger(string categoryName, IOptionsSnapshot<ErrorMailLoggerOptions> options)
         {
@@ -29,6 +31,24 @@ namespace YouZack.ErrorMail
             return logLevel == LogLevel.Error || logLevel == LogLevel.Critical;
         }
 
+        private void CleanExpiredMessagesCache()
+        {
+            int intervalSec = options.Value.IntervalSeconds;
+            var expiredDateTime = DateTime.Now.AddSeconds(-intervalSec);
+            List<string> keysToBeRemoved = new List<string>();
+            foreach (var kv in this.sendedMessagesCache)
+            {
+                if (kv.Value < expiredDateTime)
+                {
+                    keysToBeRemoved.Add(kv.Key);
+                }
+            }
+            foreach(var key in keysToBeRemoved)
+            {
+                this.sendedMessagesCache.TryRemove(key,out DateTime dt);               
+            }
+        }
+
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
         {
             if (!IsEnabled(logLevel))
@@ -44,8 +64,9 @@ namespace YouZack.ErrorMail
             {
                 return;
             }
+            CleanExpiredMessagesCache();
             var opt = options.Value;
-            if (opt.SendSameErrorOnlyOnce && sendedMessages.Contains(message))
+            if (opt.SendSameErrorOnlyOnce&& sendedMessagesCache.ContainsKey(message))
             {
                 return;
             }
@@ -53,18 +74,22 @@ namespace YouZack.ErrorMail
             string body = FormatLayout(opt.Body, message, categoryName, logLevel, eventId, exception);
             string subject = FormatLayout(opt.Subject, message, categoryName, logLevel, eventId, exception);
             SendMail(subject, body);
-            sendedMessages.Add(message);
+            sendedMessagesCache[message] = DateTime.Now;
         }
 
-        static void AddRange(MailAddressCollection collection, string[] addresses)
+        static void AddRange(MailAddressCollection collection,string[] addresses)
         {
+            if(addresses==null)
+            {
+                return;
+            }
             foreach (string address in addresses)
             {
                 collection.Add(address);
             }
         }
 
-        private void SendMail(string subject, string body)
+        private void SendMail(string subject,string body)
         {
             var opt = options.Value;
 
@@ -82,12 +107,12 @@ namespace YouZack.ErrorMail
                 client.Host = opt.SmtpServer;
                 client.Port = opt.SmtpPort;
                 client.EnableSsl = opt.SmtpEnableSsl;
-                client.Credentials = new NetworkCredential(opt.SmtpUserName, opt.SmtpPassword);
+                client.Credentials = new NetworkCredential(opt.SmtpUserName,opt.SmtpPassword);
                 client.Send(mailMessage);
             }
         }
 
-        private static string FormatLayout(string template, string message, string categoryName,
+        private static string FormatLayout(string template, string message,string categoryName,
             LogLevel logLevel, EventId eventId, Exception exception)
         {
             string result = template.Replace("${message}", message).Replace("${logLevel}", logLevel.ToString())

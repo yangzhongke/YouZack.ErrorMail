@@ -6,12 +6,13 @@
     <Authors>Zack Yang</Authors>
     <RepositoryUrl>https://github.com/yangzhongke/YouZack.ErrorMail</RepositoryUrl>
     <PackageProjectUrl>https://github.com/yangzhongke/YouZack.ErrorMail</PackageProjectUrl>
-    <Description>Mail Logging provider on .Net Core, which can be configured as 'send the same error only once'
+    <Description>Mail Logging provider on .Net Core, which can be configured as 'send the same error only once', if SendSameErrorOnlyOnce=true, if there are more than one same messages ocurred, only one mail would be sent in the time of "IntervalSeconds" senconds.
 
 services.AddLogging(builder =&gt; {
 	builder.AddErrorMail(opt =&gt; {
 		opt.From = "server@xxx.com";
 		opt.To = new []{"yzk@xxx.com" };
+		opt.IntervalSeconds = 30;
 		opt.SendSameErrorOnlyOnce = true;
 		opt.SmtpEnableSsl = true;
 		opt.SmtpUserName = "server@xxxx.com";
@@ -20,6 +21,7 @@ services.AddLogging(builder =&gt; {
 		opt.SmtpEnableSsl = true;
 	});
 });</Description>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
