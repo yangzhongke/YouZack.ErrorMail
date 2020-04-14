@@ -11,11 +11,12 @@ namespace YouZack.ErrorMail
     public class ErrorMailLogger : ILogger
     {
         private readonly string categoryName;
-        private readonly IOptionsSnapshot<ErrorMailLoggerOptions> options;
+        //因为ErrorMailLogger是单例，所以不能用IOptionsSnapshot，因为IOptionsSnapshot是Scoped的（每次Scoped刷新一次)
+        private readonly IOptions<ErrorMailLoggerOptions> options;
         private readonly ConcurrentDictionary<string,DateTime> sendedMessagesCache 
             = new ConcurrentDictionary<string, DateTime>();
 
-        public ErrorMailLogger(string categoryName, IOptionsSnapshot<ErrorMailLoggerOptions> options)
+        public ErrorMailLogger(string categoryName, IOptions<ErrorMailLoggerOptions> options)
         {
             this.categoryName = categoryName;
             this.options = options;
@@ -89,25 +90,23 @@ namespace YouZack.ErrorMail
             }
         }
 
-        private void SendMail(string subject,string body)
+        private void SendMail(string subject, string body)
         {
             var opt = options.Value;
-
-            var mailMessage = new MailMessage();
-            AddRange(mailMessage.To, opt.To);
-            AddRange(mailMessage.CC, opt.CC);
-            AddRange(mailMessage.Bcc, opt.Bcc);
-            mailMessage.From = new MailAddress(opt.From);
-            mailMessage.Subject = subject;
-            mailMessage.Body = body;
-            mailMessage.IsBodyHtml = false;
-
+            using (var mailMessage = new MailMessage())
             using (var client = new SmtpClient())
             {
+                AddRange(mailMessage.To, opt.To);
+                AddRange(mailMessage.CC, opt.CC);
+                AddRange(mailMessage.Bcc, opt.Bcc);
+                mailMessage.From = new MailAddress(opt.From);
+                mailMessage.Subject = subject;
+                mailMessage.Body = body;
+                mailMessage.IsBodyHtml = false;
                 client.Host = opt.SmtpServer;
                 client.Port = opt.SmtpPort;
                 client.EnableSsl = opt.SmtpEnableSsl;
-                client.Credentials = new NetworkCredential(opt.SmtpUserName,opt.SmtpPassword);
+                client.Credentials = new NetworkCredential(opt.SmtpUserName, opt.SmtpPassword);
                 client.Send(mailMessage);
             }
         }

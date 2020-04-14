@@ -5,8 +5,8 @@ namespace YouZack.ErrorMail
 {
     public class ErrorMailLoggerProvider : ILoggerProvider
     {
-        private readonly IOptionsSnapshot<ErrorMailLoggerOptions> options;
-        public ErrorMailLoggerProvider(IOptionsSnapshot<ErrorMailLoggerOptions> options)
+        private readonly IOptions<ErrorMailLoggerOptions> options;
+        public ErrorMailLoggerProvider(IOptions<ErrorMailLoggerOptions> options)
         {
             this.options = options;
         }
