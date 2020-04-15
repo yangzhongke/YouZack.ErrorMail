@@ -118,7 +118,9 @@ namespace YouZack.ErrorMail
                 .Replace("${categoryName}", categoryName).Replace("${newline}", Environment.NewLine);
             if (exception != null)
             {
-                result = result.Replace("${exception}", exception.StackTrace);
+                //ToString()连原始的异常消息和一行堆栈都有了
+                //exception.Message和参数message不一样
+                result = result.Replace("${exception}", exception.ToString());
             }
             result = result.Replace("${datetime}", DateTime.Now.ToString())
                 .Replace("${machinename}", Environment.MachineName)
