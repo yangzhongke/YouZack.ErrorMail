@@ -5,18 +5,21 @@ namespace YouZack.ErrorMail
 {
     public class ErrorMailLoggerProvider : ILoggerProvider
     {
-        private readonly IOptions<ErrorMailLoggerOptions> options;
-        public ErrorMailLoggerProvider(IOptions<ErrorMailLoggerOptions> options)
+        private readonly IOptionsSnapshot<ErrorMailLoggerOptions> options;
+        private readonly ErrorMailLogProcessor processor;
+        public ErrorMailLoggerProvider(IOptionsSnapshot<ErrorMailLoggerOptions> options)
         {
             this.options = options;
+            this.processor = new ErrorMailLogProcessor(options);
         }
         public ILogger CreateLogger(string categoryName)
         {
-            return new ErrorMailLogger(categoryName, options);
+            return new ErrorMailLogger(categoryName, processor);
         }
 
         public void Dispose()
         {
+            this.processor.Dispose();
         }
     }
 }

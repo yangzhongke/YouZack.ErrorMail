@@ -1,25 +1,16 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Net;
-using System.Net.Mail;
 
 namespace YouZack.ErrorMail
 {
-    public class ErrorMailLogger : ILogger
+    class ErrorMailLogger : ILogger
     {
+        private readonly ErrorMailLogProcessor processor;
         private readonly string categoryName;
-        //因为ErrorMailLogger是单例，所以不能用IOptionsSnapshot，因为IOptionsSnapshot是Scoped的（每次Scoped刷新一次)
-        private readonly IOptions<ErrorMailLoggerOptions> options;
-        private readonly ConcurrentDictionary<string,DateTime> sendedMessagesCache 
-            = new ConcurrentDictionary<string, DateTime>();
-
-        public ErrorMailLogger(string categoryName, IOptions<ErrorMailLoggerOptions> options)
+        public ErrorMailLogger(string categoryName,ErrorMailLogProcessor processor)
         {
             this.categoryName = categoryName;
-            this.options = options;
+            this.processor = processor;
         }
 
         public IDisposable BeginScope<TState>(TState state)
@@ -29,30 +20,14 @@ namespace YouZack.ErrorMail
 
         public bool IsEnabled(LogLevel logLevel)
         {
-            return logLevel == LogLevel.Error || logLevel == LogLevel.Critical;
-        }
-
-        private void CleanExpiredMessagesCache()
-        {
-            int intervalSec = options.Value.IntervalSeconds;
-            var expiredDateTime = DateTime.Now.AddSeconds(-intervalSec);
-            List<string> keysToBeRemoved = new List<string>();
-            foreach (var kv in this.sendedMessagesCache)
-            {
-                if (kv.Value < expiredDateTime)
-                {
-                    keysToBeRemoved.Add(kv.Key);
-                }
-            }
-            foreach(var key in keysToBeRemoved)
-            {
-                this.sendedMessagesCache.TryRemove(key,out DateTime dt);               
-            }
+            return logLevel == LogLevel.Warning || logLevel == LogLevel.Error
+                || logLevel == LogLevel.Critical;
         }
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
         {
-            if (!IsEnabled(logLevel))
+            //because the "Log" method blocks the caller method, so if the given logLevel is not enabled, the method returns directly to keep performant
+            if(!IsEnabled(logLevel))
             {
                 return;
             }
@@ -65,67 +40,9 @@ namespace YouZack.ErrorMail
             {
                 return;
             }
-            CleanExpiredMessagesCache();
-            var opt = options.Value;
-            if (opt.SendSameErrorOnlyOnce&& sendedMessagesCache.ContainsKey(message))
-            {
-                return;
-            }
-
-            string body = FormatLayout(opt.Body, message, categoryName, logLevel, eventId, exception);
-            string subject = FormatLayout(opt.Subject, message, categoryName, logLevel, eventId, exception);
-            SendMail(subject, body);
-            sendedMessagesCache[message] = DateTime.Now;
-        }
-
-        static void AddRange(MailAddressCollection collection,string[] addresses)
-        {
-            if(addresses==null)
-            {
-                return;
-            }
-            foreach (string address in addresses)
-            {
-                collection.Add(address);
-            }
-        }
-
-        private void SendMail(string subject, string body)
-        {
-            var opt = options.Value;
-            using (var mailMessage = new MailMessage())
-            using (var client = new SmtpClient())
-            {
-                AddRange(mailMessage.To, opt.To);
-                AddRange(mailMessage.CC, opt.CC);
-                AddRange(mailMessage.Bcc, opt.Bcc);
-                mailMessage.From = new MailAddress(opt.From);
-                mailMessage.Subject = subject;
-                mailMessage.Body = body;
-                mailMessage.IsBodyHtml = false;
-                client.Host = opt.SmtpServer;
-                client.Port = opt.SmtpPort;
-                client.EnableSsl = opt.SmtpEnableSsl;
-                client.Credentials = new NetworkCredential(opt.SmtpUserName, opt.SmtpPassword);
-                client.Send(mailMessage);
-            }
-        }
-
-        private static string FormatLayout(string template, string message,string categoryName,
-            LogLevel logLevel, EventId eventId, Exception exception)
-        {
-            string result = template.Replace("${message}", message).Replace("${logLevel}", logLevel.ToString())
-                .Replace("${categoryName}", categoryName).Replace("${newline}", Environment.NewLine);
-            if (exception != null)
-            {
-                //ToString()连原始的异常消息和一行堆栈都有了
-                //exception.Message和参数message不一样
-                result = result.Replace("${exception}", exception.ToString());
-            }
-            result = result.Replace("${datetime}", DateTime.Now.ToString())
-                .Replace("${machinename}", Environment.MachineName)
-                .Replace("${eventId}", eventId.ToString());
-            return result;
+            //https://stackoverflow.com/questions/59919244/how-should-async-logging-to-database-be-implemented-in-asp-net-core-application
+            //messages should be put into queue to avoid low performance
+            this.processor.Enqueue(new LogItem {EventId=eventId,Message=message,LogLevel=logLevel,Exception=exception,CategoryName=categoryName });
         }
 
         private class NullDisposable : IDisposable
